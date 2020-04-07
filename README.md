@@ -1,4 +1,4 @@
-# parquet_optimization
+# Parquet Optimization (DS-1004, Lab 4)
 
 * Addresses differences between row and columnar storage.
 * Goes over basic SSH/Git tasks related to lab4
