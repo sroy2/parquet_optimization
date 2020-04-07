@@ -234,7 +234,7 @@ def transform(spark, t_list, name, benchmark_cmd=None, runtype=False, *args, **k
                del dfs[(f,q)]
                print(f"no transformations applied to {q}; skipping")
         except:
-            print(f"Are you sure {f}_{name}.parquet isn't already on your hdfs?")
+            print(f"Are you sure {q}_{f}_{name}.parquet isn't already on your hdfs?")
             print(f"skipping: {(f,q)}")
             pass
         
