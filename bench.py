@@ -192,6 +192,19 @@ def transform(spark, t_list, name, benchmark_cmd=None, runtype=False, *args, **k
     nothing... but it saves the three parquet files to your hdfs
     '''
     import re
+    
+    def decode(v):
+        if isinstance(v, int):
+            return [v]
+        else:
+            v = [i.strip() for i in v.split(',')]
+            for i in v:
+                try:
+                    v[i]=int(v[i])
+                except:
+                    pass
+            return v
+    
     netid = whoami()
     f_list = ['people_small', 'people_medium', 'people_large']
     lookup = {'pq_avg_income':0, 
@@ -206,37 +219,35 @@ def transform(spark, t_list, name, benchmark_cmd=None, runtype=False, *args, **k
                 if t[0] != q and t[0] != lookup[q]:
                     continue
                 elif t[1]=='sort':
-                    dfs[(f,q)]=dfs[(f,q)].sort([i.strip() for i in t[2].split(',')])
+                    dfs[(f,q)]=dfs[(f,q)].sort(*decode(t[2]))
                 elif t[1]=='repartition':
-                    dfs[(f,q)]=dfs[(f,q)].partition([i.strip() for i in t[2].split(',')])
+                    dfs[(f,q)]=dfs[(f,q)].repartition(*decode(t[2]))
                 else:
                     print(f'malformed transformation:{t}')
                     
-    transformed = list(zip(*t_list))[0]
-    for f in f_list: 
-        for q in lookup:        
-            try:
-                if q in transformed or lookup[q] in transformed:
-                    dfs[(f,q)].write.parquet('hdfs:/user/'+netid+'/'+q+'_'+f+'_'+name+'.parquet')
-                else:
-                    _ = dfs.pop((f,q))
-                    print(f"no transformations applied to {q}; skipping")
-            except:
-                print(f"Are you sure {f}_{name}.parquet isn't already on your hdfs?")
-                print(f"skipping: {t}")
-                pass
+    transformed = list(zip(*t_list))[0]        
+    for f,q in dfs.keys():
+        try: 
+            if q in transformed or lookup[q] in transformed:
+                dfs[(f,q)].write.parquet('hdfs:/user/'+netid+'/'+q+'_'+f+'_'+name+'.parquet')
+            else:
+               del dfs[(f,q)]
+               print(f"no transformations applied to {q}; skipping")
+        except:
+            print(f"Are you sure {f}_{name}.parquet isn't already on your hdfs?")
+            print(f"skipping: {(f,q)}")
+            pass
         
     if benchmark_cmd:
         for f, q in dfs:
-            if q in transformed or lookup[q] in transformed:
-                if f in benchmark_cmd:
-                    cmd = re.sub("'.*?'", 
-                                 f"'hdfs:/user/{netid}/{q}_{f}_{name}.parquet'",
-                                 benchmark_cmd)
-                    try:
-                        print(f"{q}_{name}")
-                        csv_table(spark, cmd, runtype)
-                    except:
-                        print(f"{cmd} broke; going to next")
-                        pass
+            if (q in transformed or lookup[q] in transformed) and f in benchmark_cmd:
+                cmd = re.sub("'.*?'", 
+                             f"'hdfs:/user/{netid}/{q}_{f}_{name}.parquet'",
+                             benchmark_cmd)
+                try:
+                    print(f"{q}_{name}")
+                    csv_table(spark, cmd, runtype)
+                except:
+                    print(f"{cmd} broke; going to next")
+                    pass
 
