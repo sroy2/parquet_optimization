@@ -74,21 +74,22 @@ def benchmark(spark, n_trials, query_maker, *args, **kwargs):
     return times
 
 
-def stats(times):
-    '''Helper function to get the min, median, and max of a timing list.
-    
-    Parameters
-    ----------
-    times : iterable list object with floats
+def copy():
+    '''Helper function to copy the lab4 csv files to parquet.
     
     Returns
     -------
-    nothing... but it prints out the min, median, and max of times.
+    nothing... but it saves the three parquet files to your hdfs.
     '''
-    import statistics
-    print(f'min: {min(times):.3f}')
-    print(f'med: {statistics.median(times):.3f}')
-    print(f'max: {max(times):.3f}')
+    import getpass
+    netid = getpass.getuser()
+    for x in ['people_small', 'people_medium', 'people_large']:
+        df = spark.read.csv('hdfs:/user/bm106/pub/'+x+'.csv', header=True, schema='first_name STRING, last_name STRING, income FLOAT, zipcode INT')
+        try:
+            df.write.parquet('hdfs:/user/'+netid+'/'+x+'.parquet')
+        except:
+            print(f"Are you sure {x}.parquet isn't already on your hdfs?")
+            pass
     
 def csv_table(spark, benchmark_cmd, runtype=False, *args, **kwargs):
     '''Helper procedure to make csv formatted table statistics.
@@ -98,14 +99,14 @@ def csv_table(spark, benchmark_cmd, runtype=False, *args, **kwargs):
     benchmark_cmd : string
         The benchmark command you want to execute.
     
-    runtype : string | None, 'csv', 'pq', 'both'
+    runtype : string | None, 'single', 'all', 'csv', 'pq'
     
         Optional parameter, if not set only benchmark_cmd results are printed.
         
-        Attempts to run all queries of test type and returns results.
-        'csv' uses the bm106 csv filepath.
-        'pq' uses the filepath provided in the benchmark_cmd.
-        'both' attempts both, defaulting to 'csv' behavior if no 'pq' path provided
+        'all'    run all pq|csv queries on all file sizes
+        'csv'    runs csv queries with all bm106 csv filepath sizes
+        'pq'     runs pq queries with all provided pq filepath sizes
+        'both'   runs both, csv and pq queries as stated above
     
     Returns
     -------
@@ -130,10 +131,13 @@ def csv_table(spark, benchmark_cmd, runtype=False, *args, **kwargs):
         q_list = ['csv_avg_income', 'csv_max_income', 'csv_anna', 
                    'pq_avg_income', 'pq_max_income', 'pq_anna']
         
-        csv = True if runtype=='csv' or runtype=='both' else False
-        pq = True if (runtype=='pq' or runtype=='both') and pq_path[-1]=='t' else False
+        csv = True if 'csv' in runtype or 'both' in runtype else False
+        pq = True if ('pq' in runtype or 'both' in runtype) and pq_path[-1]=='t' else False
+        _all = True if 'all' in runtype else False
         
         for q in q_list:
+            if not _all and q not in query:
+                continue
             query = query.replace(queryname, q)
             queryname = q
             for f in f_list:
