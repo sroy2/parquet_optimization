@@ -73,16 +73,24 @@ def benchmark(spark, n_trials, query_maker, *args, **kwargs):
 
     return times
 
+def whoami():
+    '''Helper function to return user netid
+    
+    Returns
+    -------
+    netid : string
+    '''
+    import getpass
+    return getpass.getuser()
 
-def copy():
+def copy(spark):
     '''Helper function to copy the lab4 csv files to parquet.
     
     Returns
     -------
     nothing... but it saves the three parquet files to your hdfs.
     '''
-    import getpass
-    netid = getpass.getuser()
+    netid = whoami()
     for x in ['people_small', 'people_medium', 'people_large']:
         df = spark.read.csv('hdfs:/user/bm106/pub/'+x+'.csv', header=True, schema='first_name STRING, last_name STRING, income FLOAT, zipcode INT')
         try:
@@ -91,7 +99,7 @@ def copy():
             print(f"Are you sure {x}.parquet isn't already on your hdfs?")
             pass
     
-def csv_table(spark, benchmark_cmd, runtype=False, *args, **kwargs):
+def csv_table(spark, benchmark_cmd, runtype=None, *args, **kwargs):
     '''Helper procedure to make csv formatted table statistics.
     
     Parameters
@@ -159,5 +167,62 @@ def csv_table(spark, benchmark_cmd, runtype=False, *args, **kwargs):
     print(output)
 
 
+def transform(spark, t_list, name, benchmark_cmd=None, runtype=False, *args, **kwargs):
+    '''Helper procedure to transform and write parquet files.
+    
+    Parameters
+    ----------
+    t_list : list of tuples
+        list of transformations to apply:
+            
+        ('filename','sort','value')
+        ('filename','repartition','value')
+        
+        where filenames = 'people_small'|0, 'people_medium'|1, 'people_large'|2
+        
+    name : string
+        string appended to base filename when adding to hdfs
+        'people_small' -> 'people_small'+'_'+name
 
+    benchmark_cmd : string
+        automatically chains csv_table(benchmark) once files are written
+
+    Returns
+    -------
+    nothing... but it saves the three parquet files to your hdfs
+    '''
+    netid = whoami()
+    lookup = {'people_small':0, 
+              'people_medium':1, 
+              'people_large':2}
+    for x in lookup:
+        df = spark.read.parquet('hdfs:/user/'+netid+'/'+x+'.parquet')
+        for t in t_list:
+            if t[0] != x and t[0] != lookup[x]:
+                continue
+            elif t[1]=='sort':
+                df=df.sort([i.strip() for i in t[2].split(',')])
+            elif t[1]=='repartition':
+                df=df.partition([i.strip() for i in t[2].split(',')])
+            else:
+                print(f'malformed transformation:{t}')
+            try:
+                df.write.parquet('hdfs:/user/'+netid+'/'+x+'_'+name+'.parquet')
+            except:
+                print(f"Are you sure {x}_{name}.parquet isn't already on your hdfs?")
+                print(f"skipping: {t}")
+                pass
+        
+    if benchmark_cmd:
+        csv_table(spark, benchmark_cmd, runtype)
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 
