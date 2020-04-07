@@ -175,14 +175,14 @@ def transform(spark, t_list, name, benchmark_cmd=None, runtype=False, *args, **k
     t_list : list of tuples
         list of transformations to apply:
             
-        ('filename','sort','value')
-        ('filename','repartition','value')
+        ('query','sort','value')
+        ('query','repartition','value')
         
-        where filenames = 'people_small'|0, 'people_medium'|1, 'people_large'|2
+        where query = 'pq_avg_income'|0, 'pq_max_income'|1, 'pq_anna'|2
         
     name : string
         string appended to base filename when adding to hdfs
-        'people_small' -> 'people_small'+'_'+name
+        f'people_small.parquet' -> f'{query}_people_small_{name}.parquet'
 
     benchmark_cmd : string
         automatically chains csv_table(benchmark) once files are written
@@ -191,38 +191,52 @@ def transform(spark, t_list, name, benchmark_cmd=None, runtype=False, *args, **k
     -------
     nothing... but it saves the three parquet files to your hdfs
     '''
+    import re
     netid = whoami()
-    lookup = {'people_small':0, 
-              'people_medium':1, 
-              'people_large':2}
-    for x in lookup:
-        df = spark.read.parquet('hdfs:/user/'+netid+'/'+x+'.parquet')
-        for t in t_list:
-            if t[0] != x and t[0] != lookup[x]:
-                continue
-            elif t[1]=='sort':
-                df=df.sort([i.strip() for i in t[2].split(',')])
-            elif t[1]=='repartition':
-                df=df.partition([i.strip() for i in t[2].split(',')])
-            else:
-                print(f'malformed transformation:{t}')
+    f_list = ['people_small', 'people_medium', 'people_large']
+    lookup = {'pq_avg_income':0, 
+              'pq_max_income':1, 
+              'pq_anna':2}
+    dfs = {}
+    for f in f_list:
+        df = spark.read.parquet('hdfs:/user/'+netid+'/'+f+'.parquet')
+        for q in lookup:
+            dfs[(f,q)]=df
+            for t in t_list:
+                if t[0] != q and t[0] != lookup[q]:
+                    continue
+                elif t[1]=='sort':
+                    dfs[(f,q)]=dfs[(f,q)].sort([i.strip() for i in t[2].split(',')])
+                elif t[1]=='repartition':
+                    dfs[(f,q)]=dfs[(f,q)].partition([i.strip() for i in t[2].split(',')])
+                else:
+                    print(f'malformed transformation:{t}')
+                    
+    transformed = list(zip(*t_list))[0]
+    for f in f_list: 
+        for q in lookup:        
             try:
-                df.write.parquet('hdfs:/user/'+netid+'/'+x+'_'+name+'.parquet')
+                if q in transformed or lookup[q] in transformed:
+                    dfs[(f,q)].write.parquet('hdfs:/user/'+netid+'/'+q+'_'+f+'_'+name+'.parquet')
+                else:
+                    _ = dfs.pop((f,q))
+                    print(f"no transformations applied to {q}; skipping")
             except:
-                print(f"Are you sure {x}_{name}.parquet isn't already on your hdfs?")
+                print(f"Are you sure {f}_{name}.parquet isn't already on your hdfs?")
                 print(f"skipping: {t}")
                 pass
         
     if benchmark_cmd:
-        csv_table(spark, benchmark_cmd, runtype)
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+        for f, q in dfs:
+            if q in transformed or lookup[q] in transformed:
+                if f in benchmark_cmd:
+                    cmd = re.sub("'.*?'", 
+                                 f"'hdfs:/user/{netid}/{q}_{f}_{name}.parquet'",
+                                 benchmark_cmd)
+                    try:
+                        print(f"{q}_{name}")
+                        csv_table(spark, cmd, runtype)
+                    except:
+                        print(f"{cmd} broke; going to next")
+                        pass
 
