@@ -143,6 +143,10 @@ def csv_table(spark, benchmark_cmd, runtype=None, *args, **kwargs):
         pq = True if ('pq' in runtype or 'both' in runtype) and pq_path[-1]=='t' else False
         _all = True if 'all' in runtype else False
         
+        for f in f_list:
+            if f in filename:
+                filename = filename.replace(f, 'people_small')
+        
         for q in q_list:
             if not _all and q not in query:
                 continue
@@ -155,10 +159,9 @@ def csv_table(spark, benchmark_cmd, runtype=None, *args, **kwargs):
                     file = pq_path
                 else:
                     continue
-                file = file.replace(filename, f)
-                filename = f
+                file = file.replace('people_small', f)
                 t = benchmark(spark, runs, eval(query), file)
-                output += f'{q},{f},{runs},{min(t):.3f},{med(t):.3f},{max(t):.3f}\n' 
+                output += f'{q},{file.split("/")[-1].split(".")[0]},{runs},{min(t):.3f},{med(t):.3f},{max(t):.3f}\n' 
 
     else:
         t = benchmark(spark, runs, eval(query), file)
